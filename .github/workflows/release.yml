@@ -71,5 +71,5 @@ jobs:
           ./cosign sign-blob --yes --output-signature "$manifest.sig" --output-certificate "$manifest.pem" "$manifest"
           ./cosign verify-blob --certificate "$manifest.pem" --signature "$manifest.sig" --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/tags/${TAG}" "$manifest"
           gh release upload "$TAG" "$manifest.sig" "$manifest.pem" --repo "$GITHUB_REPOSITORY" --clobber
-      - name: Promote verified candidate to latest stable release
-        run: gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --prerelease=false --latest
+      - name: Keep candidate pending installation and upgrade verification
+        run: echo "Signed candidate $TAG is ready for installation and upgrade verification; promote manually after validation."
