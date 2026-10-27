@@ -33,4 +33,6 @@ flowctl upgrade
 
 Upgrade checks the latest stable GitHub release and only upgrades when it is newer. `flowctl upgrade --force` explicitly reinstalls the latest release (including a downgrade). `flowctl upgrade --no-skill` updates only the executable. Cosign must be available on PATH. The previous executable is retained as `flowctl.bak`. Configure and log into your own endpoint with an explicit `--profile local|test|prod`; installation does not configure production access.
 
+Starting with 2.1.35, version checks and upgrades are independent of backend profiles and login credentials. They work even when a production endpoint is not configured. Set their output preferences with command-line flags or `FLOWCTL_FORMAT` / `FLOWCTL_LANG`.
+
 For bugs or installation questions, open an issue without credentials, tokens or personal data.
