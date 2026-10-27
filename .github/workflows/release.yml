@@ -1,0 +1,75 @@
+name: Sign and verify binary distribution
+on:
+  release:
+    types: [published]
+permissions:
+  contents: write
+  id-token: write
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  distribute:
+    if: github.repository == 'liangyouyiji-dev/flowctl' && github.event.release.prerelease
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: ${{ github.event.release.tag_name }}
+    steps:
+      - name: Checkout distribution tag
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          persist-credentials: false
+      - name: Validate candidate against reviewed manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          mkdir candidate
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir candidate
+          cp "flowctl_${TAG#v}_checksums.txt" expected-checksums.txt
+          cmp expected-checksums.txt "candidate/flowctl_${TAG#v}_checksums.txt"
+          python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+          version = os.environ['TAG'][1:]
+          expected = {f'flowctl_{version}_{p}.{ext}' for p, ext in [
+              ('darwin_amd64','tar.gz'), ('darwin_arm64','tar.gz'),
+              ('linux_amd64','tar.gz'), ('linux_arm64','tar.gz'),
+              ('linux_386','tar.gz'), ('linux_riscv64','tar.gz'),
+              ('windows_amd64','zip'), ('windows_arm64','zip')]}
+          expected.add(f'flowctl_{version}_sbom.json')
+          lines = Path('expected-checksums.txt').read_text().splitlines()
+          assert len(lines) == len(expected)
+          found = set()
+          for line in lines:
+              digest, name = line.split('  ')
+              assert re.fullmatch('[0-9a-f]{64}', digest)
+              assert name in expected and name not in found
+              found.add(name)
+          assert found == expected
+          PY
+          (cd candidate && sha256sum --check "flowctl_${TAG#v}_checksums.txt")
+      - name: Install pinned Cosign
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 https://github.com/sigstore/cosign/releases/download/v2.6.0/cosign-linux-amd64 -o cosign
+          echo "ea5c65f99425d6cfbb5c4b5de5dac035f14d09131c1a0ea7c7fc32eab39364f9  cosign" | sha256sum --check
+          chmod +x cosign
+      - name: Smoke test Linux binary and contract identity
+        run: |
+          set -euo pipefail
+          mkdir smoke
+          tar -xzf "candidate/flowctl_${TAG#v}_linux_amd64.tar.gz" -C smoke flowctl
+          FLOWCTL_CONFIG_DIR="$RUNNER_TEMP/flowctl-check" FLOWCTL_DISABLE_ERROR_REPORT=1 ./smoke/flowctl version --verify-artifact --expected-version "${TAG#v}" --require-contract schema/v1 --require-clean --format json
+      - name: Sign distribution checksums with GitHub identity
+        run: |
+          set -euo pipefail
+          manifest="candidate/flowctl_${TAG#v}_checksums.txt"
+          ./cosign sign-blob --yes --output-signature "$manifest.sig" --output-certificate "$manifest.pem" "$manifest"
+          ./cosign verify-blob --certificate "$manifest.pem" --signature "$manifest.sig" --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/tags/${TAG}" "$manifest"
+          gh release upload "$TAG" "$manifest.sig" "$manifest.pem" --repo "$GITHUB_REPOSITORY" --clobber
+      - name: Promote verified candidate to latest stable release
+        run: gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --prerelease=false --latest
