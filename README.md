@@ -1,5 +1,7 @@
 # flowctl
 
+> **Releases paused — 2026-10-28.** Published releases, binary assets and version tags have been withdrawn while the official domain is being prepared. This repository and its distribution documentation are retained. Installation and upgrade commands below are reference instructions for future releases; downloads are currently unavailable. Application source code remains private.
+
 Official binary distribution of flowctl by 亮有一计.
 
 Website: https://liangyouyiji.com · Support: support@liangyouyiji.com
